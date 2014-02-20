@@ -16,29 +16,29 @@
  *
  * @category   Netzarbeiter
  * @package    Netzarbeiter_GroupsCatalog2
- * @copyright  Copyright (c) 2012 Vinai Kopp http://netzarbeiter.com
+ * @copyright  Copyright (c) 2013 Vinai Kopp http://netzarbeiter.com
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
 class Netzarbeiter_GroupsCatalog2_Model_System_Config_Source_Mode_Product
 {
-	/**
-	 * Return the mode options for the product configuration
-	 *
-	 * @return array
-	 */
-	public function toOptionArray()
-	{
-		$helper = Mage::helper('netzarbeiter_groupscatalog2');
-		return array(
-			array(
-				'value' => Netzarbeiter_GroupsCatalog2_Helper_Data::MODE_SHOW_BY_DEFAULT,
-				'label' => $helper->__('Show products by default')
-			),
-			array(
-				'value' => Netzarbeiter_GroupsCatalog2_Helper_Data::MODE_HIDE_BY_DEFAULT,
-				'label' => $helper->__('Hide products by default')
-			),
-		);
-	}
+    /**
+     * Return the mode options for the product configuration
+     *
+     * @return array
+     */
+    public function toOptionArray()
+    {
+        $helper = Mage::helper('netzarbeiter_groupscatalog2');
+        return array(
+            array(
+                'value' => Netzarbeiter_GroupsCatalog2_Helper_Data::MODE_SHOW_BY_DEFAULT,
+                'label' => $helper->__('Show products by default')
+            ),
+            array(
+                'value' => Netzarbeiter_GroupsCatalog2_Helper_Data::MODE_HIDE_BY_DEFAULT,
+                'label' => $helper->__('Hide products by default')
+            ),
+        );
+    }
 }

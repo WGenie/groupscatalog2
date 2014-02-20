@@ -16,7 +16,7 @@
  *
  * @category   Netzarbeiter
  * @package    Netzarbeiter_GroupsCatalog2
- * @copyright  Copyright (c) 2012 Vinai Kopp http://netzarbeiter.com
+ * @copyright  Copyright (c) 2013 Vinai Kopp http://netzarbeiter.com
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
@@ -32,8 +32,7 @@ class Netzarbeiter_GroupsCatalog2_Adminhtml_Netzarbeiter_GroupsCatalog2_Migratio
 
     public function doStepAction()
     {
-        try
-        {
+        try {
             $step = $this->getRequest()->getParam('migration_step');
             if (!$step) {
                 Mage::throwException($this->__('No migration step specified.'));
@@ -41,9 +40,7 @@ class Netzarbeiter_GroupsCatalog2_Adminhtml_Netzarbeiter_GroupsCatalog2_Migratio
             Mage::helper('netzarbeiter_groupscatalog2/migration')->doStep($step);
 
             $this->_getSession()->addSuccess($this->__('Finished migration step "%s" successfully.', $step));
-        }
-        catch (Exception $e)
-        {
+        } catch (Exception $e) {
             $this->_getSession()->addError($e->getMessage());
         }
         $this->_redirect('*/*/index');

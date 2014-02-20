@@ -1,21 +1,44 @@
 <?php
+/**
+ * Netzarbeiter
+ *
+ * NOTICE OF LICENSE
+ *
+ * This source file is subject to the Open Software License (OSL 3.0)
+ * that is bundled with this package in the file LICENSE.txt.
+ * It is also available through the world-wide-web at this URL:
+ * http://opensource.org/licenses/osl-3.0.php
+ *
+ * DISCLAIMER
+ *
+ * Do not edit or add to this file if you wish to upgrade this Module to
+ * newer versions in the future.
+ *
+ * @category   Netzarbeiter
+ * @package    Netzarbeiter_GroupsCatalog2
+ * @copyright  Copyright (c) 2013 Vinai Kopp http://netzarbeiter.com
+ * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
+ */
 
 /**
  * @loadSharedFixture global.yaml
  * @doNotIndexAll
  */
-class Netzarbeiter_GroupsCatalog2_Test_Helper_Data extends EcomDev_PHPUnit_Test_Case
+class Netzarbeiter_GroupsCatalog2_Test_Helper_DataTest extends EcomDev_PHPUnit_Test_Case
 {
-    protected $configSection = 'netzarbeiter_groupscatalog2';
-    protected $configGroup = 'general';
+    protected $_configSection = 'netzarbeiter_groupscatalog2';
+    protected $_configGroup = 'general';
     /** @var Netzarbeiter_GroupsCatalog2_Helper_Data */
-    protected $helper;
+    protected $_helper;
 
-    public static function setUpBeforeClass() {
+    public static function setUpBeforeClass()
+    {
         // Fix SET @SQL_MODE='NO_AUTO_VALUE_ON_ZERO' bugs from shared fixture files
-        /** @var $db Varien_Db_Adapter_Interface */
-        $db = Mage::getSingleton('core/resource')->getConnection('customer_write');
-        $db->update(
+        /** @var $con Varien_Db_Adapter_Interface */
+
+        // With the merge of https://github.com/IvanChepurnyi/EcomDev_PHPUnit/pull/93 this hack isn't required any more
+        $con = Mage::getSingleton('core/resource')->getConnection('customer_write');
+        $con->update(
             Mage::getSingleton('core/resource')->getTableName('customer/customer_group'),
             array('customer_group_id' => 0),
             "customer_group_code='NOT LOGGED IN'"
@@ -32,11 +55,16 @@ class Netzarbeiter_GroupsCatalog2_Test_Helper_Data extends EcomDev_PHPUnit_Test_
      */
     protected function getFrontendStore($code = null)
     {
+        /** @var $store Mage_Core_Model_Store */
         foreach (Mage::app()->getStores() as $store) {
             if (null === $code) {
-                if (! $store->isAdmin()) return $store;
+                if (! $store->isAdmin()) {
+                    return $store;
+                }
             } else {
-                if ($store->getCode() == $code) return $store;
+                if ($store->getCode() == $code) {
+                    return $store;
+                }
             }
         }
         $this->throwException(new Exception('Unable to find frontend store'));
@@ -55,14 +83,21 @@ class Netzarbeiter_GroupsCatalog2_Test_Helper_Data extends EcomDev_PHPUnit_Test_
      */
     protected function getConfigPrefix()
     {
-        return $this->configSection . '/' . $this->configGroup .'/';
+        return $this->_configSection . '/' . $this->_configGroup .'/';
     }
 
-    public function setUp()
+    protected function setUp()
     {
-        /** @var helper Netzarbeiter_GroupsCatalog2_Helper_Data */
-        $this->helper = Mage::helper('netzarbeiter_groupscatalog2');
+        $this->_helper = Mage::helper('netzarbeiter_groupscatalog2');
+
+        // Mock customer session
+        $mockSession = $this->getModelMockBuilder('customer/session')
+                    ->disableOriginalConstructor()
+                    ->getMock();
+
+        $this->replaceByMock('singleton', 'customer/session', $mockSession);
     }
+
 
     // Tests #######
 
@@ -70,19 +105,19 @@ class Netzarbeiter_GroupsCatalog2_Test_Helper_Data extends EcomDev_PHPUnit_Test_
     {
         $store = $this->getFrontendStore('germany');
         $store->setConfig($this->getConfigPrefix() . 'test', 256);
-        $this->assertEquals($this->helper->getConfig('test', $store), 256);
+        $this->assertEquals($this->_helper->getConfig('test', $store), 256);
     }
 
     public function testGetGroups()
     {
-        $groups = $this->helper->getGroups();
+        $groups = $this->_helper->getGroups();
 
         $this->assertInstanceOf('Mage_Customer_Model_Resource_Group_Collection', $groups);
     }
 
     public function testGetGroupsContainsNotLoggedIn()
     {
-        $group = $this->helper->getGroups()->getItemByColumnValue('customer_group_code', 'NOT LOGGED IN');
+        $group = $this->_helper->getGroups()->getItemByColumnValue('customer_group_code', 'NOT LOGGED IN');
         $this->assertInstanceOf('Mage_Customer_Model_Group', $group);
     }
 
@@ -91,16 +126,20 @@ class Netzarbeiter_GroupsCatalog2_Test_Helper_Data extends EcomDev_PHPUnit_Test_
         $store = $this->getFrontendStore();
 
         $store->setConfig($this->getConfigPrefix() . 'is_active', 1);
-        $this->assertEquals(true, $this->helper->isModuleActive($store), 'Store config active');
+        $this->assertEquals(true, $this->_helper->isModuleActive($store), 'Store config active');
 
-        $this->helper->setModuleActive(false);
-        $this->assertEquals(false, $this->helper->isModuleActive($store), 'ModuleActive Flag should override store config');
+        $this->_helper->setModuleActive(false);
+        $this->assertEquals(
+            false, $this->_helper->isModuleActive($store), 'ModuleActive Flag should override store config'
+        );
 
-        $this->helper->resetActivationState();
-        $this->assertEquals(true, $this->helper->isModuleActive($store), 'resetActivationState() should revert to store config');
+        $this->_helper->resetActivationState();
+        $this->assertEquals(
+            true, $this->_helper->isModuleActive($store), 'resetActivationState() should revert to store config'
+        );
 
         $store->setConfig($this->getConfigPrefix() . 'is_active', 0);
-        $this->assertEquals(false, $this->helper->isModuleActive($store), 'Store config inactive');
+        $this->assertEquals(false, $this->_helper->isModuleActive($store), 'Store config inactive');
     }
 
     public function testIsModuleActiveAdmin()
@@ -108,15 +147,21 @@ class Netzarbeiter_GroupsCatalog2_Test_Helper_Data extends EcomDev_PHPUnit_Test_
         $store = $this->getAdminStore();
 
         $store->setConfig($this->getConfigPrefix() . 'is_active', 1);
-        $this->assertEquals(false, $this->helper->isModuleActive($store), 'Admin store is always inactive by default');
-        $this->assertEquals(true, $this->helper->isModuleActive($store, false), 'Admin check disabled should return store setting');
+        $this->assertEquals(false, $this->_helper->isModuleActive($store), 'Admin store is always inactive by default');
+        $this->assertEquals(
+            true, $this->_helper->isModuleActive($store, false), 'Admin check disabled should return store setting'
+        );
 
         $store->setConfig($this->getConfigPrefix() . 'is_active', 0);
-        $this->helper->setModuleActive(true);
-        $this->assertEquals(false, $this->helper->isModuleActive($store), 'Admin scope should ignore module state flag');
-        $this->assertEquals(true, $this->helper->isModuleActive($store, false), 'Admin check disabled should return module state flag');
+        $this->_helper->setModuleActive(true);
+        $this->assertEquals(
+            false, $this->_helper->isModuleActive($store), 'Admin scope should ignore module state flag'
+        );
+        $this->assertEquals(
+            true, $this->_helper->isModuleActive($store, false), 'Admin check disabled should return module state flag'
+        );
 
-        $this->helper->resetActivationState();
+        $this->_helper->resetActivationState();
     }
 
     /**
@@ -126,16 +171,23 @@ class Netzarbeiter_GroupsCatalog2_Test_Helper_Data extends EcomDev_PHPUnit_Test_
      */
     public function testIsProductVisible($storeCode, $customerGroupId)
     {
+        // Complete mock of customer session
+        /* @var $session PHPUnit_Framework_MockObject_MockObject Stub */
+        $mockSession = Mage::getSingleton('customer/session');
+        $mockSession->expects($this->any()) // Will be only called if current store is deactivated
+            ->method('getCustomerGroupId')
+            ->will($this->returnValue($customerGroupId));
+
         $this->setCurrentStore($storeCode);
         foreach (array(1, 2, 3) as $productId) {
             $product = Mage::getModel('catalog/product')->load($productId);
             $expected = $this->expected('%s-%s-%s', $storeCode, $customerGroupId, $productId)->getIsVisible();
-            $visible = $this->helper->isEntityVisible($product, $customerGroupId);
+            $visible = $this->_helper->isEntityVisible($product, $customerGroupId);
 
             $message = sprintf(
                 "Visibility for product %d, store %s, customer group %s (%d) is expected to be %d but found to be %d",
                 $productId, $storeCode,
-                $this->helper->getGroups()->getItemById($customerGroupId)->getCustomerGroupCode(),
+                $this->_helper->getGroups()->getItemById($customerGroupId)->getCustomerGroupCode(),
                 $customerGroupId, $expected, $visible
             );
             $this->assertEquals($expected, $visible, $message);
@@ -151,7 +203,7 @@ class Netzarbeiter_GroupsCatalog2_Test_Helper_Data extends EcomDev_PHPUnit_Test_
     {
         $store = Mage::app()->getStore($store);
         $expected = $this->expected('%s-%s', $entityTypeCode, $store->getCode());
-        $groups = $this->helper->getEntityVisibleDefaultGroupIds($entityTypeCode, $store);
+        $groups = $this->_helper->getEntityVisibleDefaultGroupIds($entityTypeCode, $store);
         $message = sprintf(
             'Default visible to groups for store %s "%s" not matching expected list "%s"',
             $store->getCode(), implode(',', $groups), implode(',', $expected->getVisibleToGroups())
@@ -168,7 +220,7 @@ class Netzarbeiter_GroupsCatalog2_Test_Helper_Data extends EcomDev_PHPUnit_Test_
     {
         $store = Mage::app()->getStore($store);
         $expected = $this->expected('%s-%s', $entityTypeCode, $store->getCode())->getMode();
-        $mode = $this->helper->getModeSettingByEntityType($entityTypeCode, $store);
+        $mode = $this->_helper->getModeSettingByEntityType($entityTypeCode, $store);
         $message = sprintf(
             'Mode setting for %s in store %s is "%s"',
             $entityTypeCode, $store->getCode(), $mode
@@ -183,14 +235,8 @@ class Netzarbeiter_GroupsCatalog2_Test_Helper_Data extends EcomDev_PHPUnit_Test_
      */
     public function testApplyConfigModeSetting($groupIds, $mode)
     {
-        if (! $groupIds) {
-            $groupIds = array(); // Can't specify an empty array in yaml provider
-        }
         $expected = $this->expected('%s-%s', $mode, implode('', $groupIds))->getGroupIds();
-        if ('' === $expected) {
-            $expected = array(); // Can't specify an empty array in yaml expectations
-        }
-        $result = $this->helper->applyConfigModeSetting($groupIds, $mode);
+        $result = $this->_helper->applyConfigModeSetting($groupIds, $mode);
         $message = sprintf(
             'Apply mode "%s" to group ids "%s" is expected to result in "%s" but was "%s"',
             $mode, implode(',', $groupIds), implode(',', $expected), implode(',', $result)

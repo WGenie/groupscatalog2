@@ -16,7 +16,7 @@
  *
  * @category   Netzarbeiter
  * @package    Netzarbeiter_GroupsCatalog2
- * @copyright  Copyright (c) 2012 Vinai Kopp http://netzarbeiter.com
+ * @copyright  Copyright (c) 2013 Vinai Kopp http://netzarbeiter.com
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
@@ -26,13 +26,18 @@ class Netzarbeiter_GroupsCatalog2_Helper_Data extends Mage_Core_Helper_Abstract
     const MODE_SHOW_BY_DEFAULT = 'show';
     const USE_DEFAULT = -2;
     const USE_NONE = -1;
+    const LABEL_DEFAULT = '[ USE DEFAULT ]';
+    const LABEL_NONE = '[ NONE ]';
 
     const XML_CONFIG_PRODUCT_MODE = 'netzarbeiter_groupscatalog2/general/product_mode';
     const XML_CONFIG_CATEGORY_MODE = 'netzarbeiter_groupscatalog2/general/category_mode';
     const XML_CONFIG_PRODUCT_DEFAULT_PREFIX = 'netzarbeiter_groupscatalog2/general/product_default_';
     const XML_CONFIG_CATEGORY_DEFAULT_PREFIX = 'netzarbeiter_groupscatalog2/general/category_default_';
+    const XML_CONFIG_DISABLED_ROUTES = 'global/netzarbeiter_groupscatalog2/disabled_on_routes';
 
     const HIDE_GROUPS_ATTRIBUTE = 'groupscatalog2_groups';
+    const HIDE_GROUPS_ATTRIBUTE_STATE_CACHE = 'groupscatalog2_groups_state_cache';
+    const CUSTOMER_GROUP_CACHE_TAG = 'groupscatalog2_customer_group';
 
     /**
      * Customer group collection instance
@@ -61,6 +66,14 @@ class Netzarbeiter_GroupsCatalog2_Helper_Data extends Mage_Core_Helper_Abstract
      * @var bool|null
      */
     protected $_moduleActive = null;
+
+    /**
+     * On these routes the module is inactive.
+     * This is important for IPN notifications and API requests to succeed
+     *
+     * @var array
+     */
+    protected $_disabledOnRoutes;
 
     /**
      * Return a configuration setting from within the netzarbeiter_groupscatalog2/general section.
@@ -133,6 +146,12 @@ class Netzarbeiter_GroupsCatalog2_Helper_Data extends Mage_Core_Helper_Abstract
             return true;
         }
 
+        $cachedState = $entity->getData(self::HIDE_GROUPS_ATTRIBUTE_STATE_CACHE);
+        if (! is_null($cachedState)) {
+            return $cachedState;
+        }
+
+
         // Default to the current customer group id
         if (is_null($customerGroupId)) {
             $customerGroupId = $this->getCustomerGroupId();
@@ -142,8 +161,10 @@ class Netzarbeiter_GroupsCatalog2_Helper_Data extends Mage_Core_Helper_Abstract
 
         if (!is_array($groupIds) && !is_string($groupIds)) {
             // If the value isn't set on the entity mode fall back to querying the db index table
-            return Mage::getResourceSingleton('netzarbeiter_groupscatalog2/filter')
+            $visibility = Mage::getResourceSingleton('netzarbeiter_groupscatalog2/filter')
                     ->isEntityVisible($entity, $customerGroupId);
+            $entity->setData(self::HIDE_GROUPS_ATTRIBUTE_STATE_CACHE, $visibility);
+            return $visibility;
         }
 
         /* @var $entityType string The entity type code for the specified entity */
@@ -170,7 +191,9 @@ class Netzarbeiter_GroupsCatalog2_Helper_Data extends Mage_Core_Helper_Abstract
         // If the configured mode is 'show' the list of group ids must be inverse
         $groupIds = $this->applyConfigModeSettingByStore($groupIds, $entityType, $entity->getStore());
 
-        return in_array($customerGroupId, $groupIds);
+        $visibility = in_array($customerGroupId, $groupIds);
+        $entity->setData(self::HIDE_GROUPS_ATTRIBUTE_STATE_CACHE, $visibility);
+        return $visibility;
     }
 
     /**
@@ -182,7 +205,6 @@ class Netzarbeiter_GroupsCatalog2_Helper_Data extends Mage_Core_Helper_Abstract
     public function getIndexTableByEntityType($entityType)
     {
         $entityType = Mage::getSingleton('eav/config')->getEntityType($entityType);
-        $table = '';
         switch ($entityType->getEntityTypeCode()) {
             default:
             case Mage_Catalog_Model_Product::ENTITY:
@@ -265,7 +287,8 @@ class Netzarbeiter_GroupsCatalog2_Helper_Data extends Mage_Core_Helper_Abstract
         }
 
         if (!array_key_exists($storeId, $this->_visibilityByStore[$entityTypeCode])) {
-            $this->_visibilityByStore[$entityTypeCode][$storeId] = $this->_getEntityVisibleDefaultGroupIds($entityType, $store);
+            $this->_visibilityByStore[$entityTypeCode][$storeId] =
+                $this->_getEntityVisibleDefaultGroupIds($entityType, $store);
         }
         $groupIds = $this->_visibilityByStore[$entityTypeCode][$storeId];
         if ($applyMode) {
@@ -412,5 +435,66 @@ class Netzarbeiter_GroupsCatalog2_Helper_Data extends Mage_Core_Helper_Abstract
     public function getModuleActiveFlag()
     {
         return $this->_moduleActive;
+    }
+
+    /**
+     * Return the route names on which the module should be inactive
+     *
+     * @return array
+     */
+    public function getDisabledOnRoutes()
+    {
+        if (null == $this->_disabledOnRoutes) {
+            $this->_disabledOnRoutes = array_keys(
+                Mage::getConfig()->getNode(self::XML_CONFIG_DISABLED_ROUTES)->asArray()
+            );
+        }
+        return $this->_disabledOnRoutes;
+    }
+
+    /**
+     * Return the groupscatalog attribute model
+     * 
+     * @param string $entityType
+     * @return Mage_Eav_Model_Entity_Attribute
+     */
+    public function getGroupsCatalogAttribute($entityType)
+    {
+        return Mage::getSingleton('eav/config')->getAttribute($entityType, self::HIDE_GROUPS_ATTRIBUTE);
+    }
+
+    /**
+     * Return a string of comma separated customer group names.
+     * Used when rendering of multiselect fields in the admin interface is turned off.
+     * 
+     * @param array $value List of customer group ids
+     * @return string
+     */
+    public function getGroupNamesAsString(array $value)
+    {
+        $list = array();
+
+        $key = array_search(Netzarbeiter_GroupsCatalog2_Helper_Data::USE_DEFAULT, $value);
+        if (false !== $key) {
+            $list[] = $this->__(Netzarbeiter_GroupsCatalog2_Helper_Data::LABEL_DEFAULT);
+            unset($value[$key]);
+        }
+        $key = array_search(Netzarbeiter_GroupsCatalog2_Helper_Data::USE_NONE, $value);
+        if (false !== $key) {
+            $list[] = $this->__(Netzarbeiter_GroupsCatalog2_Helper_Data::LABEL_NONE);
+            unset($value[$key]);
+        }
+        if (count($value)) {
+            /** @var Mage_Customer_Model_Resource_Group_Collection $groups */
+            $groups = Mage::getResourceModel('customer/group_collection');
+            $groups->addFieldToFilter('customer_group_id', array('in' => $value));
+            $groups->initCache(Mage::app()->getCache(), 'groupscatalog2', array(
+                self::CUSTOMER_GROUP_CACHE_TAG
+            ));
+            foreach ($groups as $group) {
+                $list[] = $group->getCustomerGroupCode();
+            }
+        }
+        return implode(', ', $list);
     }
 }

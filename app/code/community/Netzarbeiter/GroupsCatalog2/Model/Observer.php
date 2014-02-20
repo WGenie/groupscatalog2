@@ -16,12 +16,30 @@
  *
  * @category   Netzarbeiter
  * @package    Netzarbeiter_GroupsCatalog2
- * @copyright  Copyright (c) 2012 Vinai Kopp http://netzarbeiter.com
+ * @copyright  Copyright (c) 2013 Vinai Kopp http://netzarbeiter.com
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
 class Netzarbeiter_GroupsCatalog2_Model_Observer
 {
+    /**
+     * Change rewrite depending on Magento version
+     * 
+     * In Magento 1.8 the method signature changed for 
+     * Mage_Catalog_Model_Resource_Category_Flat::_loadNodes()
+     * 
+     * @param Varien_Event_Observer $observer
+     */
+    public function controllerFrontInitBefore(Varien_Event_Observer $observer)
+    {
+        if (version_compare(Mage::getVersion(), '1.8', '<')) {
+            Mage::getConfig()->setNode(
+                'global/models/catalog_resource/rewrite/category_flat',
+                'Netzarbeiter_GroupsCatalog2_Model_Catalog_Resource_Category_Flat17'
+            );
+        }
+    }
+    
     /**
      * Add the groupscatalog filter sql to product collections
      *
@@ -83,16 +101,15 @@ class Netzarbeiter_GroupsCatalog2_Model_Observer
      */
     protected function _applyHiddenEntityHandling($entityTypeCode)
     {
-        if ($this->_getHelper()->isModuleActive() && !$this->_isApiRequest()) {
+        if ($this->_getHelper()->isModuleActive() && !$this->_isDisabledOnRequest()) {
             // Do not apply redirects and messages to customer module (order history and dashboard for example).
             // Otherwise products that where previously purchased by the customer and now are hidden from him
-            // would make the customer account inaccessable.
+            // would make the customer account inaccessible.
             if (Mage::app()->getRequest()->getModuleName() !== 'customer') {
                 Mage::helper('netzarbeiter_groupscatalog2/hidden')->applyHiddenEntityHandling($entityTypeCode);
             }
         }
     }
-
 
 
     /**
@@ -112,7 +129,7 @@ class Netzarbeiter_GroupsCatalog2_Model_Observer
         $helper = $this->_getHelper();
 
         // If the module isn't disabled on a global scale
-        if ($helper->isModuleActive($category->getStore(), false) && !$this->_isApiRequest()) {
+        if ($helper->isModuleActive($category->getStore(), false) && !$this->_isDisabledOnRequest()) {
             if ($category->dataHasChangedFor(Netzarbeiter_GroupsCatalog2_Helper_Data::HIDE_GROUPS_ATTRIBUTE)) {
                 if ($helper->getConfig('auto_refresh_block_cache')) {
                     // Only refresh the category block cache: Mage_Catalog_Model_Category::CACHE_TAG
@@ -126,6 +143,7 @@ class Netzarbeiter_GroupsCatalog2_Model_Observer
 
     /**
      * Add a notice to rebuild the groupscatalog indexer whenever a new customer group is created.
+     * Also clear the group collection cache.
      *
      * @param Varien_Event_Observer $observer
      */
@@ -139,6 +157,12 @@ class Netzarbeiter_GroupsCatalog2_Model_Observer
                 $process->changeStatus(Mage_Index_Model_Process::STATUS_REQUIRE_REINDEX);
             }
         }
+        
+        // Clean the collection cache used when the input type of the attributes
+        // is switched to label via the system configuration.
+        Mage::app()->cleanCache(array(
+            Netzarbeiter_GroupsCatalog2_Helper_Data::CUSTOMER_GROUP_CACHE_TAG
+        ));
     }
 
     /**
@@ -155,7 +179,7 @@ class Netzarbeiter_GroupsCatalog2_Model_Observer
         /* @var $collection Mage_Wishlist_Model_Resource_Item_Collection */
         $collection = $observer->getCollection();
         $helper = $this->_getHelper();
-        if ($helper->isModuleActive() && !$this->_isApiRequest()) {
+        if ($helper->isModuleActive() && !$this->_isDisabledOnRequest()) {
             $customerGroupId = $helper->getCustomerGroupId();
 
             $storeId = Mage::app()->getStore()->getId();
@@ -176,7 +200,7 @@ class Netzarbeiter_GroupsCatalog2_Model_Observer
         /* @var $collection Mage_Catalog_Model_Resource_Product_Collection */
         $collection = $observer->getCollection();
         $helper = $this->_getHelper();
-        if ($helper->isModuleActive($collection->getStoreId()) && !$this->_isApiRequest()) {
+        if ($helper->isModuleActive($collection->getStoreId()) && !$this->_isDisabledOnRequest()) {
             $customerGroupId = $helper->getCustomerGroupId();
             $this->_getResource()
                     ->addGroupsCatalogFilterToProductCollectionCountSelect($collection, $customerGroupId);
@@ -184,52 +208,61 @@ class Netzarbeiter_GroupsCatalog2_Model_Observer
     }
 
     /**
-     * Update the quote items quantities, in case one of the quote item products has been hidden.
-     * If we don't do that the sidebar cart item qty might be wrong.
-     *
-     * There might be a better way to do this but so far this is the best way I could think of.
-     * This is a very rare case that probably won't come into effect at all, only when a product
-     * that a customer has in the cart becomes hidden (may be a customer group change or a product
-     * setting change). Maybe this can go if the overhead is too large. Leave for now.
+     * Remove products that are in the cart that where not hidden while logged out
+     * but are hidden to the customer once logged in.
      *
      * @param Varien_Event_Observer $observer
-     * @return void
-     * @see Mage_Sales_Model_Quote::collectTotals()
      */
-    public function salesQuoteLoadAfter(Varien_Event_Observer $observer)
+    public function salesQuoteMergeBefore(Varien_Event_Observer $observer)
     {
-        /* @var $quote Mage_Sales_Model_Quote */
-        $quote = $observer->getQuote();
+        /** @var Mage_Sales_Model_Quote $guestQuote */
+        $guestQuote = $observer->getSource();
 
-        /*
-         * This is an excerpt from Mage_Sales_Model_Quote::collectTotals(). We don't need to
-         * recalculate all totals here, we just need to make sure the item quantities are correct.
-         */
-        if ($this->_getHelper()->isModuleActive($quote->getStore()) &&
-                $quote->getItemsQty() > 0 && !$this->_isApiRequest()
-        ) {
-            $itemsCount = $itemsQty = $virtualItemsQty = 0;
-            foreach ($quote->getAllVisibleItems() as $item) {
-                if ($item->getParentItem()) {
-                    continue;
-                }
-                $children = $item->getChildren();
-                if ($children && $item->isShipSeparately()) {
-                    foreach ($children as $child) {
-                        if ($child->getProduct()->getIsVirtual()) {
-                            $virtualItemsQty += $child->getQty() * $item->getQty();
-                        }
-                    }
-                }
-                if ($item->getProduct()->getIsVirtual()) {
-                    $virtualItemsQty += $item->getQty();
-                }
-                $itemsCount += 1;
-                $itemsQty += (float)$item->getQty();
+        // If a hidden product is loaded, it's entity_id is set to null.
+        // So all we need to do here is set the deleted property to true,
+        // and then they will not be merged into the customer quote.
+        foreach ($guestQuote->getItemsCollection() as $quoteItem) {
+            if (! $quoteItem->getProductId()) {
+                $quoteItem->isDeleted(true);
             }
-            $quote->setVirtualItemsQty($virtualItemsQty)
-                    ->setItemsCount($itemsCount)
-                    ->setItemsQty($itemsQty);
+        }
+    }
+
+    /**
+     * Switch groupscatalog attribute input to display only if configured to avoid loading
+     * the customer group option list.
+     * This makes sense for stores with a large number of customer groups who manage the
+     * assignment via an product import mechanism.
+     * Prohibit loading of the customer groups using this hackish approach and not in the
+     * attribute source model, because that is also used during importing and it needs to
+     * always return the full list of options, regardless of the "show_multiselect_field"
+     * setting.
+     * 
+     * @param Varien_Event_Observer $observer
+     */
+    public function controllerActionPredispatchAdminhtmlCatalogProductEdit(Varien_Event_Observer $observer)
+    {
+        $helper = $this->_getHelper();
+        if (! $helper->getConfig('show_multiselect_field')) {
+            $entityType = Mage_Catalog_Model_Product::ENTITY;
+            $attribute = $helper->getGroupsCatalogAttribute($entityType);
+            $attribute->setFrontendInput('label');
+        }
+    }
+
+    /**
+     * Switch groupscatalog attribute input to display only if configured
+     * 
+     * @see self::controllerActionPredispatchAdminhtmlCatalogProductEdit
+     * @param Varien_Event_Observer $observer
+     */
+    public function controllerActionPredispatchAdminhtmlCatalogCategoryEdit(Varien_Event_Observer $observer)
+    {
+        $helper = $this->_getHelper();
+        if (! $helper->getConfig('show_multiselect_field')) {
+            $entityType = Mage_Catalog_Model_Category::ENTITY;
+            $attribute = $helper->getGroupsCatalogAttribute($entityType);
+            $attribute->setFrontendInput('label');
         }
     }
 
@@ -242,7 +275,7 @@ class Netzarbeiter_GroupsCatalog2_Model_Observer
     protected function _applyGroupsCatalogSettingsToEntity(Mage_Catalog_Model_Abstract $entity)
     {
         $helper = $this->_getHelper();
-        if ($helper->isModuleActive() && !$this->_isApiRequest()) {
+        if ($helper->isModuleActive() && !$this->_isDisabledOnRequest()) {
             if (!$helper->isEntityVisible($entity)) {
                 $entity->setData(null)->setId(null);
                 // Set flag to make it easier to implement a redirect if needed (or debug)
@@ -254,13 +287,13 @@ class Netzarbeiter_GroupsCatalog2_Model_Observer
     /**
      * Add the groupscatalog filter sql to catalog collections using the groupscatalog filter resource model
      *
-     * @param Mage_Eav_Model_Entity_Collection_Abstract|Mage_Catalog_Model_Resource_Category_Flat_Collection $collection
+     * @param Varien_Data_Collection_Db (Mage_Catalog_Model_Resource_Category_Flat_Collection) $collection
      * @return void
      */
     protected function _addGroupsCatalogFilterToCollection(Varien_Data_Collection_Db $collection)
     {
         $helper = $this->_getHelper();
-        if ($helper->isModuleActive() && !$this->_isApiRequest()) {
+        if ($helper->isModuleActive() && !$this->_isDisabledOnRequest()) {
             $customerGroupId = $helper->getCustomerGroupId();
 
             $this->_getResource()
@@ -269,13 +302,14 @@ class Netzarbeiter_GroupsCatalog2_Model_Observer
     }
 
     /**
-     * Return true if the request is made via the api
+     * Return true if the request is made via the api or one of the other disabled routes
      *
      * @return boolean
      */
-    protected function _isApiRequest()
+    protected function _isDisabledOnRequest()
     {
-        return Mage::app()->getRequest()->getModuleName() === 'api';
+        $currentRoute = Mage::app()->getRequest()->getModuleName();
+        return in_array($currentRoute, $this->_getHelper()->getDisabledOnRoutes());
     }
 
     /**

@@ -16,7 +16,7 @@
  *
  * @category   Netzarbeiter
  * @package    Netzarbeiter_GroupsCatalog2
- * @copyright  Copyright (c) 2012 Vinai Kopp http://netzarbeiter.com
+ * @copyright  Copyright (c) 2013 Vinai Kopp http://netzarbeiter.com
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
@@ -39,8 +39,9 @@ class Netzarbeiter_GroupsCatalog2_Model_Resource_Migration
      * @param Mage_Eav_Model_Entity_Attribute $newAttribute
      * @return array Affected entity ids
      */
-    public function copyAttributeValues(Mage_Eav_Model_Entity_Attribute $oldAttribute, Mage_Eav_Model_Entity_Attribute $newAttribute)
-    {
+    public function copyAttributeValues(
+        Mage_Eav_Model_Entity_Attribute $oldAttribute, Mage_Eav_Model_Entity_Attribute $newAttribute
+    ) {
         $select = $this->_getReadAdapter()->select()
                 ->reset()
                 ->distinct(true)
@@ -55,8 +56,10 @@ class Netzarbeiter_GroupsCatalog2_Model_Resource_Migration
         ));
 
         // Copy old attribute values to the new attribute
-        $selectFields = array('entity_type_id', new Zend_Db_Expr($newAttribute->getId()), 'store_id', 'entity_id', 'value');
-        $insertFields = array('entity_type_id', 'attribute_id',                           'store_id', 'entity_id', 'value');
+        $selectFields = array(
+            'entity_type_id', new Zend_Db_Expr($newAttribute->getId()), 'store_id', 'entity_id', 'value'
+        );
+        $insertFields = array('entity_type_id', 'attribute_id', 'store_id', 'entity_id', 'value');
         $select->reset()
                 ->from($oldAttribute->getBackendTable(), $selectFields)
                 ->where('attribute_id=?', $oldAttribute->getId());
@@ -77,12 +80,9 @@ class Netzarbeiter_GroupsCatalog2_Model_Resource_Migration
      */
     public function deleteDbConfigSettingsByPath($path, $like = true)
     {
-        if ($like)
-        {
+        if ($like) {
             $where = $this->_getWriteAdapter()->quoteInto('path LIKE ?', "{$path}%");
-        }
-        else
-        {
+        } else {
             $where = $this->_getWriteAdapter()->quoteInto('path IN(?)', $path);
         }
         $this->_getWriteAdapter()->delete($this->getTable('core/config_data'), $where);

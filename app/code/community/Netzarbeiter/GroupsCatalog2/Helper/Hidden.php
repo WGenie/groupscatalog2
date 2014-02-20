@@ -1,4 +1,24 @@
 <?php
+/**
+ * Netzarbeiter
+ *
+ * NOTICE OF LICENSE
+ *
+ * This source file is subject to the Open Software License (OSL 3.0)
+ * that is bundled with this package in the file LICENSE.txt.
+ * It is also available through the world-wide-web at this URL:
+ * http://opensource.org/licenses/osl-3.0.php
+ *
+ * DISCLAIMER
+ *
+ * Do not edit or add to this file if you wish to upgrade this Module to
+ * newer versions in the future.
+ *
+ * @category   Netzarbeiter
+ * @package    Netzarbeiter_GroupsCatalog2
+ * @copyright  Copyright (c) 2013 Vinai Kopp http://netzarbeiter.com
+ * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
+ */
 
 class Netzarbeiter_GroupsCatalog2_Helper_Hidden extends Mage_Core_Helper_Abstract
 {
@@ -123,8 +143,8 @@ class Netzarbeiter_GroupsCatalog2_Helper_Hidden extends Mage_Core_Helper_Abstrac
         );
 
         // Cut off query string at the end if present
-        if (($p = strpos($currectUrl, '?')) !== false) {
-            $currectUrl = substr($currectUrl, 0, $p);
+        if (($pos = strpos($currectUrl, '?')) !== false) {
+            $currectUrl = substr($currectUrl, 0, $pos);
         }
 
         // Paranoid check - _getCurrentUrl() should always be within the current base URL ;)
@@ -135,7 +155,9 @@ class Netzarbeiter_GroupsCatalog2_Helper_Hidden extends Mage_Core_Helper_Abstrac
 
             if (strlen($path) > 0) {
                 // Only apply dirname() if there is a parent directory
-                if (($path = dirname($path)) === '.') $path = '';
+                if (($path = dirname($path)) === '.') {
+                    $path = '';
+                }
 
                 // Append configured category file suffix if this still isn't a top level request
                 if (strlen($path) > 0) {
@@ -189,6 +211,7 @@ class Netzarbeiter_GroupsCatalog2_Helper_Hidden extends Mage_Core_Helper_Abstrac
      * Check if the current request matches the passed route.
      *
      * @param string $targetRoute
+     * @return bool
      */
     protected function _isCurrentRoute($targetRoute)
     {
@@ -227,7 +250,7 @@ class Netzarbeiter_GroupsCatalog2_Helper_Hidden extends Mage_Core_Helper_Abstrac
             if (mb_strlen($message, 'UTF-8') > 0) {
                 /* @var $session Mage_Core_Model_Session */
                 $session = Mage::getSingleton('core/session');
-                if (! $this->_messageExistsInSession($session, $message)) {
+                if (!$this->_messageExistsInSession($session, $message)) {
                     $session->addError($message);
                 }
             }
